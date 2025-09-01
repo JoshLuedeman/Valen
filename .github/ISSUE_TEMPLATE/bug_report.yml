@@ -1,0 +1,25 @@
+name: Bug report
+description: Create a report to help us improve
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us what you expected to happen
+    validations:
+      required: true
+  - type: input
+    id: repro
+    attributes:
+      label: Repro steps
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - client
+        - hub
+        - mcp
+        - voice
+        - security

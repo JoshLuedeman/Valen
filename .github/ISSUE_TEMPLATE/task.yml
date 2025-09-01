@@ -1,0 +1,16 @@
+name: Task
+description: Tracked engineering task
+labels: ["task"]
+body:
+  - type: textarea
+    id: desc
+    attributes:
+      label: Description
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+  - type: input
+    id: milestone
+    attributes:
+      label: Milestone

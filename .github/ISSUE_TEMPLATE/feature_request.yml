@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest an idea for Valen
+labels: ["feature"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation / user benefit
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal / acceptance criteria
+  - type: checkboxes
+    id: adr
+    attributes:
+      label: ADR needed?
+      options:
+        - label: This request introduces or modifies an architectural decision

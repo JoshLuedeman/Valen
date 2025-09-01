@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: valen
+      POSTGRES_USER: valen
+      POSTGRES_DB: valen
+    ports: [ "5432:5432" ]
+    volumes: [ "pgdata:/var/lib/postgresql/data" ]
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: valen
+      MINIO_ROOT_PASSWORD: valensecret
+    ports: [ "9000:9000", "9001:9001" ]
+    volumes: [ "minio:/data" ]
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports: [ "6333:6333" ]
+    volumes: [ "qdrant:/qdrant/storage" ]
+
+  searxng:
+    image: searxng/searxng:latest
+    ports: [ "8080:8080" ]
+
+volumes:
+  pgdata: {}
+  minio: {}
+  qdrant: {}

@@ -1,0 +1,50 @@
+[
+  {
+    "name": "bug",
+    "color": "d73a4a"
+  },
+  {
+    "name": "feature",
+    "color": "a2eeef"
+  },
+  {
+    "name": "task",
+    "color": "cfd3d7"
+  },
+  {
+    "name": "adr",
+    "color": "5319e7"
+  },
+  {
+    "name": "breaking",
+    "color": "b60205"
+  },
+  {
+    "name": "perf",
+    "color": "fbca04"
+  },
+  {
+    "name": "tooling",
+    "color": "0e8a16"
+  },
+  {
+    "name": "security",
+    "color": "ee0701"
+  },
+  {
+    "name": "client",
+    "color": "1d76db"
+  },
+  {
+    "name": "hub",
+    "color": "5319e7"
+  },
+  {
+    "name": "mcp",
+    "color": "5319e7"
+  },
+  {
+    "name": "voice",
+    "color": "5319e7"
+  }
+]
