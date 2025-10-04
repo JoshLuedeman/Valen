@@ -1,5 +1,9 @@
 # ADR Index
 
+> Architecture Decision Records following the [MADR](https://adr.github.io/madr/) format.
+> See [CONTRIBUTING.md](CONTRIBUTING.md) for guidance on creating new ADRs.
+
+- ADR-000: Use MADR for Architecture Decision Records — Accepted
 - ADR-001: Client DB = SQLite (JSON1, FTS5, sqlite-vss) — Accepted
 - ADR-002: Hub = Postgres (events) + MinIO (CAS) + Qdrant/pgvector — Accepted
 - ADR-003: Client Profiles = micro | light | standard (default: light on MacBooks) — Accepted
