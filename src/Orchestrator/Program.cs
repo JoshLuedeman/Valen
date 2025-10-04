@@ -1,12 +1,14 @@
 using Valen.Shared;
 
 Console.WriteLine("Valen Orchestrator (walking skeleton)");
-if (args.Length == 0) {
+if (args.Length == 0)
+{
     Console.WriteLine("Usage: valen ingest <path> | ask \"question\"");
     return;
 }
 
-switch (args[0]) {
+switch (args[0])
+{
     case "ingest":
         Console.WriteLine($"[stub] Ingesting path: {args.ElementAtOrDefault(1) ?? "(missing)"}");
         break;
