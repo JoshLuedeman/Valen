@@ -1,0 +1,57 @@
+{
+  "milestones": [
+    {
+      "title": "M0: Repo + ADRs",
+      "description": "Scaffold repo, ADR template, automation, CI smoke",
+      "due_on": "2025-09-30T23:59:59Z",
+      "issues": [
+        {"title": "Scaffold repository structure", "body": "Create /clients, /hub, /docs, /adr, /scripts, CODEOWNERS", "labels": ["infra"]},
+        {"title": "ADR-000: Records template + process", "body": "Adopt MADR-compatible template; write contributing notes", "labels": ["adr"]},
+        {"title": "Set up CI smoke", "body": "Lint + build checks", "labels": ["infra","ci"]}
+      ]
+    },
+    {
+      "title": "M1: Light Client Runtime",
+      "description": "Local runner, planner/researcher/coder agents, tool bus",
+      "due_on": "2025-10-15T23:59:59Z",
+      "issues": [
+        {"title": "Client runtime skeleton", "body": "Host process, config, logging", "labels": ["client"]},
+        {"title": "Agent: Planner (Light profile)", "body": "Goal decomposition; MCP tool calls", "labels": ["agent"]},
+        {"title": "Agent: Researcher (Light profile)", "body": "Local/offline first; web.search pluggable", "labels": ["agent"]},
+        {"title": "Agent: Coder (Light profile)", "body": "Repo-aware edits; test runner hook", "labels": ["agent"]},
+        {"title": "Tool bus (MCP client)", "body": "Contract + registry; no-egress guard", "labels": ["mcp","tools"]}
+      ]
+    },
+    {
+      "title": "M2: Hub Services",
+      "description": "Central sync, vector store (hub-embeds), user/device registry",
+      "due_on": "2025-11-01T23:59:59Z",
+      "issues": [
+        {"title": "Hub API skeleton", "body": "gRPC/HTTP, auth model, device tokens", "labels": ["hub"]},
+        {"title": "Sync protocol: CRDT-lite", "body": "Notes/tasks/memory; conflict policy", "labels": ["sync"]},
+        {"title": "Embeddings @ hub", "body": "Queue + batch embed; client snapshot pull", "labels": ["embeddings"]},
+        {"title": "Compact snapshots", "body": "Design & prototype (DeltaJSON vs CRDT log)", "labels": ["sync"]}
+      ]
+    },
+    {
+      "title": "M3: Automation + Orchestration",
+      "description": "Flows, schedulers, long-running tasks",
+      "due_on": "2025-11-15T23:59:59Z",
+      "issues": [
+        {"title": "Flow runner (local)", "body": "YAML/JSON DSL for tasks; retries", "labels": ["automation"]},
+        {"title": "Scheduler", "body": "Cron-like engine; device wake policy", "labels": ["automation"]},
+        {"title": "Safe tool sandboxing", "body": "No-egress enforcement; audit log", "labels": ["security"]}
+      ]
+    },
+    {
+      "title": "M4: Voice Presence",
+      "description": "On-device wake + speaker recognition (optional)",
+      "due_on": "2025-12-01T23:59:59Z",
+      "issues": [
+        {"title": "Wakeword integration", "body": "Porcupine/KWS eval on Mac + Pi", "labels": ["voice"]},
+        {"title": "Speaker verification (on-device)", "body": "Lightweight embedding + enroll UX", "labels": ["voice","privacy"]},
+        {"title": "E2E voice loop", "body": "Transcribe, intent, respond; power budget test", "labels": ["voice"]}
+      ]
+    }
+  ]
+}

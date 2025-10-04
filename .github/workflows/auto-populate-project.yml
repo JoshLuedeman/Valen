@@ -1,0 +1,76 @@
+name: Auto-Populate GitHub Project
+
+on:
+  issues:
+    types: [opened, reopened]
+  schedule:
+    # Run daily at 9 AM UTC to catch any missed issues
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+    inputs:
+      project_number:
+        description: 'Project number to populate'
+        required: false
+        default: '17'
+      default_status:
+        description: 'Default status for new issues'
+        required: false
+        default: 'Backlog'
+
+env:
+  PROJECT_NUMBER: ${{ github.event.inputs.project_number || '17' }}
+  DEFAULT_STATUS: ${{ github.event.inputs.default_status || 'Backlog' }}
+
+jobs:
+  populate-project:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      issues: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup GitHub CLI
+        run: |
+          # GitHub CLI is pre-installed on GitHub runners
+          gh --version
+        
+      - name: Authenticate GitHub CLI
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh auth status
+          
+      - name: Make scripts executable
+        run: |
+          chmod +x scripts/project-populate.sh
+          
+      - name: Install dependencies
+        run: |
+          # jq is pre-installed on GitHub runners
+          which jq || sudo apt-get update && sudo apt-get install -y jq
+          
+      - name: Run project populate script
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🚀 Populating project #$PROJECT_NUMBER with default status: $DEFAULT_STATUS"
+          echo "Repository: ${{ github.repository }}"
+          
+          # Run with error handling
+          if ./scripts/project-populate.sh ${{ github.repository }} $PROJECT_NUMBER $DEFAULT_STATUS; then
+            echo "✅ Project population completed successfully"
+          else
+            echo "❌ Project population failed"
+            exit 1
+          fi
+          
+      - name: Report results
+        if: always()
+        run: |
+          echo "✅ Project population workflow completed"
+          echo "Project: https://github.com/${{ github.repository }}/projects/$PROJECT_NUMBER"

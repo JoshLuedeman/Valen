@@ -1,0 +1,31 @@
+name: Add New Issues to Project
+
+on:
+  issues:
+    types: [opened, reopened, labeled]
+    
+jobs:
+  add-to-project:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Add issue to project
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Make script executable
+          chmod +x scripts/project-populate.sh
+          
+          # Run the populate script for just this repository
+          echo "🚀 Adding issue #${{ github.event.issue.number }} to project..."
+          echo "Repository: ${{ github.repository }}"
+          
+          if ./scripts/project-populate.sh ${{ github.repository }} 17 Backlog; then
+            echo "✅ Issue #${{ github.event.issue.number }} added to project successfully!"
+          else
+            echo "❌ Failed to add issue to project"
+            exit 1
+          fi

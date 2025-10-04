@@ -1,195 +1,256 @@
 #!/usr/bin/env bash
-# Bulk-create Valen issues per milestone using GitHub CLI.
-# Usage: ./scripts/create-milestone-issues.sh <owner/repo>
+# Create GitHub milestones and issues from a JSON config, auto-creating labels as needed.
+# Requirements: gh, jq
+#
+# Usage:
+#   ./scripts/create-milestone-issues.sh <owner/repo> <config.json>
+#       [--assignee <user>] [--label <Label1,Label2>] [--dry-run] [--hostname <host>]
+#
+# Config JSON shape:
+# {
+#   "milestones":[
+#     {
+#       "title":"M0: Repo + ADRs",
+#       "description":"Scaffold repo, ADR boilerplate, automation",
+#       "due_on":"2025-09-30T23:59:59Z",
+#       "issues":[
+#         {"title":"Scaffold repo", "body":"Create base dirs and templates", "labels":["infra"]},
+#         {"title":"ADR: Decision Records framework", "body":"Adopt MADR; add template", "labels":["adr"]}
+#       ]
+#     }
+#   ]
+# }
 set -euo pipefail
 
-REPO="${1:-}"
-if [[ -z "$REPO" ]]; then
-  echo "Usage: $0 <owner/repo>"
+need(){ command -v "$1" >/dev/null || { echo "Error: $1 not found"; exit 1; }; }
+need gh; need jq
+
+REPO="${1:-}"; CONFIG="${2:-}"
+if [[ -z "$REPO" || -z "$CONFIG" ]]; then
+  echo "Usage: $0 <owner/repo> <config.json> [--assignee <user>] [--label <Label1,Label2>] [--dry-run] [--hostname <host>]"
   exit 1
 fi
+shift 2
 
-function mk() {
-  local title="$1"; shift
-  local body="$1"; shift
-  local labels="$1"; shift
-  local milestone="$1"; shift
-  gh issue create --repo "$REPO" -t "$title" -b "$body" -l "$labels" -m "$milestone"
+ASSIGNEE=""
+EXTRA_LABELS=""
+DRY_RUN="false"
+HOSTNAME="github.com"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --assignee) ASSIGNEE="${2:-}"; shift 2 ;;
+    --label)    EXTRA_LABELS="${2:-}"; shift 2 ;;   # comma-separated
+    --dry-run)  DRY_RUN="true"; shift ;;
+    --hostname) HOSTNAME="${2:-github.com}"; shift 2 ;;
+    *) echo "Warning: unknown arg '$1' ignored" >&2; shift ;;
+  esac
+done
+
+OWNER="${REPO%%/*}"
+NAME="${REPO##*/}"
+
+api(){
+  if [[ "$HOSTNAME" == "github.com" ]]; then
+    gh api "$@"
+  else
+    gh api --hostname "$HOSTNAME" "$@"
+  fi
 }
 
-# Milestones must already exist (use scripts/github-setup.sh first).
+say(){ echo "$@"; }
 
-############################################
-# Milestone 0: Bootstrap & Policies
-############################################
-mk "M0: Tracking issue — Bootstrap & Policies" \
-"**Goal:** Repo ready for dev; core policies & ADRs accepted.\n\n- [ ] ADRs 001–006 accepted and committed\n- [ ] CI green on main\n- [ ] Egress gate stub in place\n- [ ] Hub docker-compose starts\n- [ ] Copilot guide present\n" \
-"task,adr,tooling" "Milestone 0: Bootstrap & Policies"
+# --- Load and sanity-check config
+[[ -f "$CONFIG" ]] || { echo "Error: config file not found: $CONFIG"; exit 1; }
+jq -e . "$CONFIG" >/dev/null 2>&1 || { echo "Error: config is not valid JSON"; exit 1; }
 
-mk "M0: Add .editorconfig & code style" \
-"**Acceptance:**\n- [ ] .editorconfig added with C# conventions\n- [ ] Warnings-as-errors enabled for Orchestrator\n" \
-"tooling" "Milestone 0: Bootstrap & Policies"
+MCOUNT="$(jq -r '.milestones | length' "$CONFIG")"
+[[ "$MCOUNT" != "null" && "$MCOUNT" -gt 0 ]] || { echo "Error: config has no milestones"; exit 1; }
 
-mk "M0: Egress gate skeleton" \
-"**Acceptance:**\n- [ ] IEgressPolicy interface\n- [ ] Default mode disabled; safelist & nonce fields\n- [ ] Unit tests for allow/deny\n" \
-"client,security" "Milestone 0: Bootstrap & Policies"
+say "Repo: $REPO"
+say "Milestones in config: $MCOUNT"
+[[ "$DRY_RUN" == "true" ]] && say "(dry run) will not POST to GitHub"
 
-mk "M0: CI build on push/PR" \
-"**Acceptance:**\n- [ ] GitHub Actions builds .NET 8 projects\n- [ ] Badge in README\n" \
-"tooling" "Milestone 0: Bootstrap & Policies"
+# --- Labels helpers (list existing, ensure missing get created)
+EXISTING_LABELS_JSON="[]"
 
-mk "M0: Hub dev stack up (compose)" \
-"**Acceptance:**\n- [ ] docker-compose up brings Postgres, MinIO, Qdrant, SearxNG\n- [ ] README: credentials + ports\n" \
-"hub,tooling" "Milestone 0: Bootstrap & Policies"
+refresh_labels(){
+  # paginate labels (max 100 per page)
+  local page=1 all="[]"
+  while : ; do
+    local chunk
+    chunk="$(api -X GET "/repos/$OWNER/$NAME/labels?per_page=100&page=$page" 2>/dev/null || echo '[]')"
+    # stop if empty
+    if [[ "$(echo "$chunk" | jq 'length')" -eq 0 ]]; then break; fi
+    all="$(jq -c --argjson a "$all" --argjson b "$chunk" '$a + $b' <<< '{}')" 2>/dev/null || all="$(jq -c '. + []' <<<"$all")"
+    # simpler: concat via jq:
+    all="$(jq -c --argjson b "$chunk" '. + $b' <<<"$all")"
+    page=$((page+1))
+  done
+  EXISTING_LABELS_JSON="$all"
+}
 
+label_exists(){
+  local name="$1"
+  echo "$EXISTING_LABELS_JSON" | jq -e --arg n "$name" '.[] | select(.name==$n)' >/dev/null
+}
 
-############################################
-# Milestone 1: Single-device offline Q&A
-############################################
-mk "M1: Tracking issue — Single-device offline Q&A" \
-"**Goal:** Ingest local folder, answer offline with citations.\n\n- [ ] SQLite schema (docs, chunks, embeddings, runs)\n- [ ] RAG MCP server (search/ingest)\n- [ ] Ollama client\n- [ ] Ingest CLI\n- [ ] Ask CLI with citations\n- [ ] Unit/integration tests\n" \
-"task,client,mcp" "Milestone 1: Single-device offline Q&A"
+# choose a deterministic color (hex without '#') for unknown labels
+color_for_label(){
+  local label_lower
+  label_lower="$(echo "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$label_lower" in
+    infra) echo "4b5563" ;;       # gray-600
+    adr) echo "2563eb" ;;         # blue-600
+    ci) echo "22c55e" ;;          # green-500
+    client) echo "9333ea" ;;      # purple-600
+    agent) echo "0891b2" ;;       # cyan-600
+    mcp|tools) echo "d97706" ;;   # amber-600
+    hub) echo "7c3aed" ;;         # violet-600
+    sync) echo "f59e0b" ;;        # amber-500
+    embeddings) echo "0ea5e9" ;;  # sky-600
+    automation) echo "ef4444" ;;  # red-500
+    security|privacy) echo "111827" ;; # almost black
+    voice) echo "e11d48" ;;       # rose-600
+    *) echo "ededed" ;;           # light gray default
+  esac
+}
 
-mk "M1: SQLite schema + PRAGMAs" \
-"**Acceptance:**\n- [ ] Tables: documents, chunks, embeddings_vss, notes, runs\n- [ ] FTS5 virtual table for text; VSS table for vectors\n- [ ] WAL enabled; cache/tuning PRAGMAs\n" \
-"client" "Milestone 1: Single-device offline Q&A"
+ensure_label(){
+  local name="$1"
+  [[ -n "$name" ]] || return 0
+  if label_exists "$name"; then
+    return 0
+  fi
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "DRY: would create label '$name'"
+    return 0
+  fi
+  local color; color="$(color_for_label "$name")"
+  api -X POST "/repos/$OWNER/$NAME/labels" \
+      -f name="$name" \
+      -f color="$color" \
+      -f description="Created by milestone-issues bootstrap" >/dev/null || {
+        echo "Warning: failed to create label '$name' (may already exist or insufficient perms)"; return 0;
+      }
+  # refresh cache
+  refresh_labels
+}
 
-mk "M1: RAG MCP server (local) — search & ingest" \
-"**Acceptance:**\n- [ ] tools: rag.ingest(path), rag.search(query, top_k)\n- [ ] Deterministic chunking; hash-based IDs\n- [ ] Tests: ingest->search roundtrip\n" \
-"client,mcp" "Milestone 1: Single-device offline Q&A"
+ensure_labels_csv(){
+  local csv="$1"
+  IFS=',' read -r -a arr <<< "$csv"
+  for raw in "${arr[@]}"; do
+    # trim whitespace
+    local n="$(echo "$raw" | awk '{$1=$1;print}')"
+    [[ -n "$n" ]] && ensure_label "$n"
+  done
+}
 
-mk "M1: Ollama ILlmClient" \
-"**Acceptance:**\n- [ ] Chat completion wrapper with system+user\n- [ ] Timeout & error handling\n" \
-"client" "Milestone 1: Single-device offline Q&A"
+refresh_labels
 
-mk "M1: CLI — ingest <path>" \
-"**Acceptance:**\n- [ ] Command ingests files recursively, shows stats\n- [ ] Skips duplicates via content hash\n" \
-"client" "Milestone 1: Single-device offline Q&A"
+# --- Milestones: fetch existing to reuse numbers
+EXISTING_MS="$(api -X GET "/repos/$OWNER/$NAME/milestones?state=all" 2>/dev/null || echo '[]')"
 
-mk "M1: CLI — ask \"question\" (citations)" \
-"**Acceptance:**\n- [ ] Researcher queries local VSS/FTS\n- [ ] Answer includes citations (docId#chunk)\n" \
-"client" "Milestone 1: Single-device offline Q&A"
+milestone_number_for_title(){
+  local title="$1"
+  echo "$EXISTING_MS" | jq -r --arg t "$title" '.[] | select(.title==$t) | .number' | head -n1
+}
 
-mk "M1: Run log (replayable)" \
-"**Acceptance:**\n- [ ] Store inputs, plan JSON, tool I/O, final text\n- [ ] Replay command re-runs with cached tool outputs\n" \
-"client,tooling" "Milestone 1: Single-device offline Q&A"
+create_milestone(){
+  local title="$1" desc="$2" due="$3"
 
+  if [[ -z "$title" ]]; then
+    echo "Error: milestone title is empty"; return 1
+  fi
 
-############################################
-# Milestone 2: Hub skeleton + Hub-Embeds
-############################################
-mk "M2: Tracking issue — Hub skeleton + Hub-Embeds" \
-"**Goal:** Hub computes embeddings and ships snapshots. Client pulls and swaps.\n\n- [ ] Hub API (events, blobs)\n- [ ] Embedding job (bge-m3)\n- [ ] Snapshot builder (light)\n- [ ] Signature & verification\n- [ ] Client hub.sync pull & atomic swap\n" \
-"task,hub,mcp" "Milestone 2: Hub skeleton + Hub-Embeds"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "DRY: create milestone '$title' due=$due"
+    echo "0"; return 0
+  fi
 
-mk "M2: Postgres migrations — events & devices" \
-"**Acceptance:**\n- [ ] events(id, type, ts, actor, payload JSONB)\n- [ ] devices(id, pubkey, profile)\n" \
-"hub" "Milestone 2: Hub skeleton + Hub-Embeds"
+  # https://docs.github.com/rest/issues/milestones#create-a-milestone
+  if [[ -n "$due" && "$due" != "null" ]]; then
+    api -X POST "/repos/$OWNER/$NAME/milestones" \
+      -f title="$title" -f description="$desc" -f due_on="$due" \
+      | jq -r '.number'
+  else
+    api -X POST "/repos/$OWNER/$NAME/milestones" \
+      -f title="$title" -f description="$desc" \
+      | jq -r '.number'
+  fi
+}
 
-mk "M2: MinIO CAS — put/get blobs" \
-"**Acceptance:**\n- [ ] API: PUT/GET by sha256\n- [ ] Deduplication verified in tests\n" \
-"hub" "Milestone 2: Hub skeleton + Hub-Embeds"
+create_issue(){
+  local title="$1" body="$2" labels_csv="$3" ms_number="$4" ms_title="$5"
 
-mk "M2: Embed job (bge-m3) + Qdrant ingest" \
-"**Acceptance:**\n- [ ] Batch embedding from normalized chunk text\n- [ ] Push vectors to Qdrant collection with payload\n" \
-"hub" "Milestone 2: Hub skeleton + Hub-Embeds"
+  # Merge issue labels + global EXTRA_LABELS
+  local merged="$labels_csv"
+  if [[ -n "$EXTRA_LABELS" ]]; then
+    if [[ -n "$merged" ]]; then merged="$merged,$EXTRA_LABELS"; else merged="$EXTRA_LABELS"; fi
+  fi
 
-mk "M2: Snapshot builder (light, full VSS)" \
-"**Acceptance:**\n- [ ] Produce signed SQLite with metadata+VSS capped ~80k chunks\n- [ ] Publish via API; verify signature on client\n" \
-"hub,client" "Milestone 2: Hub skeleton + Hub-Embeds"
+  # Ensure labels exist before creating the issue
+  if [[ -n "$merged" ]]; then ensure_labels_csv "$merged"; fi
 
-mk "M2: Client hub.sync pull + atomic swap" \
-"**Acceptance:**\n- [ ] Download snapshot to temp file\n- [ ] Verify signature; swap DB atomically; rollback on failure\n" \
-"client,mcp" "Milestone 2: Hub skeleton + Hub-Embeds"
+  local args=(-R "$REPO" -t "$title" -b "$body")
+  if [[ -n "$merged" ]]; then args+=(-l "$merged"); fi
+  if [[ -n "$ASSIGNEE" ]]; then args+=(-a "$ASSIGNEE"); fi
+  
+  # Try using milestone title first, fall back to number if that fails
+  if [[ "$ms_number" != "0" && "$ms_number" != "" ]]; then
+    if [[ -n "$ms_title" ]]; then
+      args+=(-m "$ms_title")
+    else
+      args+=(-m "$ms_number")
+    fi
+  fi
 
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "DRY: gh issue create ${args[*]}"
+  else
+    gh issue create "${args[@]}" >/dev/null
+    echo "Created issue: $title"
+  fi
+}
 
-############################################
-# Milestone 3: Egress tools & caching
-############################################
-mk "M3: Tracking issue — Egress tools & caching" \
-"**Goal:** Safe, approved web/central search with local caching.\n\n- [ ] web.search MCP (SearxNG)\n- [ ] Readability extraction\n- [ ] Fetched cache & optional ingest\n- [ ] central.search MCP (Qdrant)\n- [ ] Planner fallback logic\n- [ ] Nonce approval flow in CLI\n" \
-"task,security,hub,client" "Milestone 3: Egress tools & caching"
+# --- Iterate milestones
+for idx in $(jq -r '.milestones | to_entries[] | .key' "$CONFIG"); do
+  MTITLE="$(jq -r ".milestones[$idx].title" "$CONFIG")"
+  MDESC="$(jq -r ".milestones[$idx].description // \"\"" "$CONFIG")"
+  MDUE="$(jq -r ".milestones[$idx].due_on // empty" "$CONFIG")"
+  say "Processing milestone: $MTITLE"
 
-mk "M3: web.search (SearxNG) MCP" \
-"**Acceptance:**\n- [ ] Args: query, top_k, fetch\n- [ ] Returns normalized results; optional doc texts\n" \
-"mcp,hub" "Milestone 3: Egress tools & caching"
+  NUM="$(milestone_number_for_title "$MTITLE")"
+  if [[ -z "$NUM" ]]; then
+    say "  Milestone does not exist; creating…"
+    NUM="$(create_milestone "$MTITLE" "$MDESC" "$MDUE")"
+    [[ "$NUM" == "0" ]] && say "  (dry run) milestone '$MTITLE' would be created"
+    # refresh list so later lookups see it
+    EXISTING_MS="$(api -X GET "/repos/$OWNER/$NAME/milestones?state=all" 2>/dev/null || echo '[]')"
+  else
+    say "  Milestone exists (#$NUM); will reuse"
+  fi
 
-mk "M3: Readability + cache" \
-"**Acceptance:**\n- [ ] HTML->text extraction with limits\n- [ ] Cache by URL hash; TTL configurable\n" \
-"client" "Milestone 3: Egress tools & caching"
+  ICOUNT="$(jq -r ".milestones[$idx].issues | length" "$CONFIG")"
+  if [[ "$ICOUNT" == "null" || "$ICOUNT" -eq 0 ]]; then
+    say "  No issues listed."
+    continue
+  fi
 
-mk "M3: central.search (Qdrant)" \
-"**Acceptance:**\n- [ ] Query central ANN with filters\n- [ ] Respect egress gate; return doc refs\n" \
-"hub,mcp" "Milestone 3: Egress tools & caching"
+  for j in $(jq -r ".milestones[$idx].issues | to_entries[] | .key" "$CONFIG"); do
+    ITITLE="$(jq -r ".milestones[$idx].issues[$j].title" "$CONFIG")"
+    IBODY="$(jq -r ".milestones[$idx].issues[$j].body // \"\"" "$CONFIG")"
 
-mk "M3: Planner escalation policy" \
-"**Acceptance:**\n- [ ] If local recall low, propose hub.sync delta then web\n- [ ] Tests for decision thresholds\n" \
-"client" "Milestone 3: Egress tools & caching"
+    TASKS="$(jq -r ".milestones[$idx].issues[$j].tasks // empty" "$CONFIG")"
+    if [[ -n "$TASKS" && "$TASKS" != "null" ]]; then
+      CHECKS="$(echo "$TASKS" | jq -r '.[] | "- [ ] " + .' )"
+      IBODY="$IBODY"$'\n\n'"### Tasks"$'\n'"$CHECKS"
+    fi
 
-mk "M3: CLI nonce approval UX" \
-"**Acceptance:**\n- [ ] Show nonce; require `approve <nonce>` before gated tool\n- [ ] Logs include approval event\n" \
-"security,client" "Milestone 3: Egress tools & caching"
+    ILABELS="$(jq -r ".milestones[$idx].issues[$j].labels // [] | join(\",\")" "$CONFIG")"
+    create_issue "$ITITLE" "$IBODY" "$ILABELS" "$NUM" "$MTITLE"
+  done
+done
 
-
-############################################
-# Milestone 4: PA/Ops + Coder
-############################################
-mk "M4: Tracking issue — PA/Ops + Coder" \
-"**Goal:** Notes/tasks (CRDT), shell/git/fs tools, code patch & test loop.\n\n- [ ] notes.* (CRDT)\n- [ ] tasks.*\n- [ ] fs sandbox + confirm-before-write\n- [ ] shell.run allowlist\n- [ ] git wrappers\n- [ ] code.run & tests.run\n- [ ] Coder patch+diff flow\n" \
-"task,client,mcp" "Milestone 4: PA/Ops + Coder"
-
-mk "M4: notes.* (CRDT)" \
-"**Acceptance:**\n- [ ] Create/append/edit CRDT docs\n- [ ] Merge test across two simulated devices\n" \
-"client,mcp" "Milestone 4: PA/Ops + Coder"
-
-mk "M4: tasks.* CRUD" \
-"**Acceptance:**\n- [ ] Create/list/update/complete tasks\n- [ ] Stored in SQLite; optional sync event\n" \
-"client,mcp" "Milestone 4: PA/Ops + Coder"
-
-mk "M4: fs sandbox + confirm-before-write" \
-"**Acceptance:**\n- [ ] Writes restricted to workspace dir\n- [ ] Confirm token required for writes outside\n" \
-"security,client" "Milestone 4: PA/Ops + Coder"
-
-mk "M4: shell.run allowlist" \
-"**Acceptance:**\n- [ ] Only allowlisted commands\n- [ ] Timeout & output size caps\n" \
-"security,client" "Milestone 4: PA/Ops + Coder"
-
-mk "M4: git wrappers" \
-"**Acceptance:**\n- [ ] git.status, git.diff, git.commit\n- [ ] Tests using temp repo\n" \
-"client,mcp" "Milestone 4: PA/Ops + Coder"
-
-mk "M4: code.run & tests.run" \
-"**Acceptance:**\n- [ ] Run dotnet/npm tasks in workspace\n- [ ] Surface exit codes & logs to model\n" \
-"client,mcp" "Milestone 4: PA/Ops + Coder"
-
-mk "M4: Coder patch+diff loop" \
-"**Acceptance:**\n- [ ] Agent proposes patch; write to workspace; run tests; present diff\n- [ ] Human confirm for final write outside workspace\n" \
-"client" "Milestone 4: PA/Ops + Coder"
-
-
-############################################
-# Optional: Voice I/O + Speaker Verification
-############################################
-mk "V1: Tracking issue — Voice I/O + Speaker Verification" \
-"**Goal:** Offline STT/TTS + speaker verify gated by wake-word.\n\n- [ ] faster-whisper wrapper\n- [ ] Piper TTS MCP\n- [ ] ECAPA speaker verification\n- [ ] Enrollment + encrypted voiceprints\n- [ ] Planner integration for sensitive ops\n" \
-"voice,mcp" "Optional: Voice I/O + Speaker Verification"
-
-mk "V1: faster-whisper MCP wrapper" \
-"**Acceptance:**\n- [ ] voice.listen start/stop\n- [ ] Streams transcripts\n" \
-"voice,mcp" "Optional: Voice I/O + Speaker Verification"
-
-mk "V1: Piper TTS MCP" \
-"**Acceptance:**\n- [ ] voice.speak(text)\n- [ ] Select voice via config\n" \
-"voice,mcp" "Optional: Voice I/O + Speaker Verification"
-
-mk "V1: ECAPA speaker verification" \
-"**Acceptance:**\n- [ ] Enroll 3–5 samples\n- [ ] Verify cosine-sim gate\n" \
-"voice,security" "Optional: Voice I/O + Speaker Verification"
-
-mk "V1: Enrollment UX + encryption" \
-"**Acceptance:**\n- [ ] Encrypt voiceprints at rest\n- [ ] CLI to enroll/reset\n" \
-"voice,security" "Optional: Voice I/O + Speaker Verification"
-
-mk "V1: Planner integration gates" \
-"**Acceptance:**\n- [ ] Require verify before sensitive commands (configurable)\n" \
-"voice,client" "Optional: Voice I/O + Speaker Verification"
+say "Done."
