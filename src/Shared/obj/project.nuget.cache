@@ -1,11 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "5XLkH8xoTYw=",
+  "dgSpecHash": "/8PiA5ROIMw=",
   "success": true,
-  "projectFilePath": "/Users/josh/git/Valen/src/Shared/Shared.csproj",
-  "expectedPackageFiles": [
-    "/Users/josh/.nuget/packages/microsoft.netcore.app.ref/8.0.19/microsoft.netcore.app.ref.8.0.19.nupkg.sha512",
-    "/Users/josh/.nuget/packages/microsoft.aspnetcore.app.ref/8.0.19/microsoft.aspnetcore.app.ref.8.0.19.nupkg.sha512"
-  ],
+  "projectFilePath": "/home/runner/work/Valen/Valen/src/Shared/Shared.csproj",
+  "expectedPackageFiles": [],
   "logs": []
 }
