@@ -4,7 +4,25 @@ This directory contains GitHub Actions workflows that automatically manage your 
 
 ## Workflows
 
-### 1. `auto-populate-project.yml`
+### 1. `ci.yml`
+**Continuous Integration - Lint and Build**
+
+**Triggers:**
+- 🔄 Push to main branch
+- 🔀 Pull requests to main branch
+
+**Features:**
+- Restores .NET dependencies
+- Checks code formatting with `dotnet format`
+- Builds solution in Release configuration
+- Runs all tests
+
+**What it validates:**
+- Code adheres to formatting standards defined in `.editorconfig`
+- Solution builds successfully without errors
+- All tests pass
+
+### 2. `auto-populate-project.yml`
 **Comprehensive project population workflow**
 
 **Triggers:**
@@ -24,7 +42,7 @@ This directory contains GitHub Actions workflows that automatically manage your 
 3. Click "Run workflow"
 4. Optionally customize project number and default status
 
-### 2. `add-issue-to-project.yml`
+### 3. `add-issue-to-project.yml`
 **Real-time issue tracking**
 
 **Triggers:**
@@ -94,7 +112,7 @@ The `project-populate.sh` script already includes intelligent label mapping:
 ```
 .github/
 └── workflows/
+    ├── ci.yml
     ├── auto-populate-project.yml
-    ├── add-issue-to-project.yml
-    └── ci.yml
+    └── add-issue-to-project.yml
 ```
