@@ -7,12 +7,26 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  lint-and-build:
+    name: Lint and Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - run: dotnet restore
-      - run: dotnet build -c Release --no-restore
+      
+      - name: Restore dependencies
+        run: dotnet restore
+      
+      - name: Check code formatting
+        run: dotnet format --verify-no-changes --verbosity diagnostic
+      
+      - name: Build
+        run: dotnet build -c Release --no-restore
+      
+      - name: Test
+        run: dotnet test -c Release --no-build --verbosity normal
